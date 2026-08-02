@@ -110,42 +110,52 @@ def disable():
     st.session_state["disable_input"] = True
 
 
-def get_api_key():
-    """Read the key locally from .env, or from Streamlit's private deployment settings."""
-    api_key = os.getenv("OPENAI_API_KEY")
-    if api_key:
-        return api_key
+def get_secret(name):
+    """Read configuration locally from .env, or from Streamlit's private deployment settings."""
+    value = os.getenv(name)
+    if value:
+        return value
 
     try:
-        return st.secrets.get("OPENAI_API_KEY")
+        return st.secrets.get(name)
     except Exception:
         return None
 
 
 def get_ai_interpretation(question, gua, gua_des):
-    api_key = get_api_key()
-    if not api_key:
-        raise RuntimeError("missing_api_key")
+    api_key = get_secret("DASHSCOPE_API_KEY")
+    base_url = get_secret("DASHSCOPE_BASE_URL")
+    if not api_key or not base_url:
+        raise RuntimeError("missing_ai_configuration")
 
-    client = OpenAI(api_key=api_key, timeout=30.0, max_retries=1)
-    response = client.responses.create(
-        model="gpt-4o-mini",
-        instructions=(
-            "你是一位温和、清醒的易经决策陪伴者。根据用户的问题和卦象，"
-            "帮助用户整理思路，不预测未来，也不把任何结果说成必然发生。"
-            "给出积极、具体、不过度承诺的建议。"
-        ),
-        input=(
-            f"问题是：{question}\n"
-            f"六爻结果是：{gua}\n"
-            f"卦名为：{gua_des['name']}\n"
-            f"{gua_des['des']}\n"
-            f"卦辞为：{gua_des['sentence']}"
-        ),
-        max_output_tokens=500,
+    client = OpenAI(api_key=api_key, base_url=base_url, timeout=30.0, max_retries=1)
+    response = client.chat.completions.create(
+        model="qwen-plus",
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "你是一位温和、清醒的易经决策陪伴者。根据用户的问题和卦象，"
+                    "帮助用户整理思路，不预测未来，也不把任何结果说成必然发生。"
+                    "给出积极、具体、不过度承诺的建议。"
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"问题是：{question}\n"
+                    f"六爻结果是：{gua}\n"
+                    f"卦名为：{gua_des['name']}\n"
+                    f"{gua_des['des']}\n"
+                    f"卦辞为：{gua_des['sentence']}"
+                ),
+            },
+        ],
+        temperature=0.7,
+        max_tokens=500,
     )
 
-    interpretation = response.output_text.strip()
+    interpretation = response.choices[0].message.content.strip()
     if not interpretation:
         raise RuntimeError("empty_response")
     return interpretation
@@ -183,7 +193,7 @@ if question := st.chat_input(placeholder="输入你内心的疑问", key='input'
             interpretation = get_ai_interpretation(question, gua, gua_des)
         add_message("assistant", interpretation)
     except RuntimeError as error:
-        if str(error) == "missing_api_key":
+        if str(error) == "missing_ai_configuration":
             add_message("assistant", "AI 解读暂未配置好，请稍后再试。卦象已经生成，你可以先从卦辞中想一想此刻最在意的事。")
         else:
             add_message("assistant", "这次暂时没有拿到 AI 解读，但卦象已经为你保留。你不必急着找答案，可以先想一想：眼下你最能掌握的一步是什么？")
