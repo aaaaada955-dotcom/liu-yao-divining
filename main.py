@@ -2,16 +2,18 @@ import time
 import streamlit as st
 import random
 import json
-import openai
 import os
 from dotenv import load_dotenv
+from openai import (
+    APIConnectionError,
+    APIStatusError,
+    AuthenticationError,
+    OpenAI,
+    OpenAIError,
+    RateLimitError,
+)
 
 load_dotenv()
-
-openai.api_type = os.getenv("OPENAI_API_TYPE")
-openai.api_base = os.getenv("OPENAI_API_BASE")
-openai.api_version = os.getenv("OPENAI_API_VERSION")
-openai.api_key = os.getenv("OPENAI_API_KEY")
 
 gua_dict = {
     '阳阳阳': '乾',
@@ -107,6 +109,47 @@ def format_coin_result(coin_result, i):
 def disable():
     st.session_state["disable_input"] = True
 
+
+def get_api_key():
+    """Read the key locally from .env, or from Streamlit's private deployment settings."""
+    api_key = os.getenv("OPENAI_API_KEY")
+    if api_key:
+        return api_key
+
+    try:
+        return st.secrets.get("OPENAI_API_KEY")
+    except Exception:
+        return None
+
+
+def get_ai_interpretation(question, gua, gua_des):
+    api_key = get_api_key()
+    if not api_key:
+        raise RuntimeError("missing_api_key")
+
+    client = OpenAI(api_key=api_key, timeout=30.0, max_retries=1)
+    response = client.responses.create(
+        model="gpt-4o-mini",
+        instructions=(
+            "你是一位温和、清醒的易经决策陪伴者。根据用户的问题和卦象，"
+            "帮助用户整理思路，不预测未来，也不把任何结果说成必然发生。"
+            "给出积极、具体、不过度承诺的建议。"
+        ),
+        input=(
+            f"问题是：{question}\n"
+            f"六爻结果是：{gua}\n"
+            f"卦名为：{gua_des['name']}\n"
+            f"{gua_des['des']}\n"
+            f"卦辞为：{gua_des['sentence']}"
+        ),
+        max_output_tokens=500,
+    )
+
+    interpretation = response.output_text.strip()
+    if not interpretation:
+        raise RuntimeError("empty_response")
+    return interpretation
+
 if question := st.chat_input(placeholder="输入你内心的疑问", key='input', disabled=st.session_state.disable_input, on_submit=disable):
     add_message("user", question)
     first_yin_yang = []
@@ -135,24 +178,25 @@ if question := st.chat_input(placeholder="输入你内心的疑问", key='input'
         卦辞为：{gua_des['sentence']}   
     """)
 
-    with st.spinner('加载解读中，请稍等 ......'):
-        response = openai.ChatCompletion.create(
-            engine="gpt-4o-mini",
-            messages = [{"role":"system","content":"你是一位出自中华六爻世家的卜卦专家，你的任务是根据卜卦者的问题和得到的卦象，为他们提供有益的建议。你的解答应基于卦象的理解，同时也要尽可能地展现出乐观和积极的态度，引导卜卦者朝着积极的方向发展。"},
-                        {"role":"user","content":f"""
-                        问题是：{question},
-                        六爻结果是：{gua},
-                        卦名为：{gua_des['name']},
-                        {gua_des['des']},
-                        卦辞为：{gua_des['sentence']}"""},
-                        ],
-            temperature=0.7,
-            max_tokens=500,
-            top_p=0.95,
-            frequency_penalty=0.5,
-            presence_penalty=0.1,
-            stop=None)
-    add_message("assistant", response.choices[0].message.content)
+    try:
+        with st.spinner('加载解读中，请稍等 ......'):
+            interpretation = get_ai_interpretation(question, gua, gua_des)
+        add_message("assistant", interpretation)
+    except RuntimeError as error:
+        if str(error) == "missing_api_key":
+            add_message("assistant", "AI 解读暂未配置好，请稍后再试。卦象已经生成，你可以先从卦辞中想一想此刻最在意的事。")
+        else:
+            add_message("assistant", "这次暂时没有拿到 AI 解读，但卦象已经为你保留。你不必急着找答案，可以先想一想：眼下你最能掌握的一步是什么？")
+    except AuthenticationError:
+        add_message("assistant", "AI 解读服务暂时无法验证，请稍后再试。卦象已经生成，不影响你先阅读卦辞。")
+    except RateLimitError:
+        add_message("assistant", "今天来问的人有点多，AI 解读正在稍作休息。请过一会儿再试，卦象已经为你保留。")
+    except APIConnectionError:
+        add_message("assistant", "AI 解读暂时连不上，但卦象已经生成。先别急着做决定，想一想：这件事里，你最想守住的是什么？")
+    except APIStatusError:
+        add_message("assistant", "AI 解读服务暂时忙碌，卦象已经生成。你可以稍后再试，或先从卦辞中寻找一个提醒。")
+    except OpenAIError:
+        add_message("assistant", "AI 解读暂时不可用，但卦象已经生成。你可以稍后再试。")
     time.sleep(0.1)
    
     add_message("assistant", """感谢使用  
