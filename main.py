@@ -100,14 +100,36 @@ def make_client():
     return OpenAI(api_key=api_key, base_url=base_url, timeout=30.0, max_retries=1)
 
 
-def ask_qwen(messages, max_tokens=500):
-    response = make_client().chat.completions.create(
-        model="qwen-plus", messages=messages, temperature=0.7, max_tokens=max_tokens
-    )
-    answer = response.choices[0].message.content.strip()
-    if not answer:
-        raise RuntimeError("empty_response")
-    return answer
+def ask_qwen(messages, max_tokens=800):
+    """Ask Qwen, and automatically continue once if the provider cuts it off mid-answer."""
+    all_parts = []
+    current_messages = list(messages)
+
+    for _ in range(2):
+        response = make_client().chat.completions.create(
+            model="qwen-plus",
+            messages=current_messages,
+            temperature=0.7,
+            max_tokens=max_tokens,
+        )
+        choice = response.choices[0]
+        answer = (choice.message.content or "").strip()
+        if not answer:
+            raise RuntimeError("empty_response")
+        all_parts.append(answer)
+
+        # "length" means the answer reached the output limit before it was finished.
+        if choice.finish_reason != "length":
+            break
+        current_messages = current_messages + [
+            {"role": "assistant", "content": answer},
+            {
+                "role": "user",
+                "content": "请从上一句自然续写，不要重复前文。用一两段完成即可，并在完整句子处收尾。",
+            },
+        ]
+
+    return "\n\n".join(all_parts)
 
 
 def initial_interpretation(reading):
@@ -117,7 +139,8 @@ def initial_interpretation(reading):
             "role": "system",
             "content": (
                 "你是一位温和、清醒的易经决策陪伴者。根据用户的问题和卦象，帮助用户整理思路，"
-                "不预测未来，不把任何结果说成必然发生。给出具体、不过度承诺的建议。"
+                "不预测未来，不把任何结果说成必然发生。请用三个短部分回答：看见什么、要留意什么、下一步能做什么。"
+                "每部分不超过三句话，务必在完整句子处结束。"
             ),
         },
         {
@@ -137,7 +160,10 @@ def follow_up_interpretation(reading, follow_up_question):
     return ask_qwen([
         {
             "role": "system",
-            "content": "你是一位温和、清醒的易经决策陪伴者。只围绕同一卦象回答追问，帮助用户梳理思路，不预测未来。",
+            "content": (
+                "你是一位温和、清醒的易经决策陪伴者。只围绕同一卦象回答追问，帮助用户梳理思路，不预测未来。"
+                "回答要直接、完整，最多给三个要点；宁可简短，也不要在一句话或一个要点中间停止。"
+            ),
         },
         {
             "role": "user",
@@ -146,35 +172,49 @@ def follow_up_interpretation(reading, follow_up_question):
                 f"卦辞：{gua_des['sentence']}\n此前追问：{history}\n\n本次追问：{follow_up_question}"
             ),
         },
-    ], max_tokens=400)
+    ], max_tokens=800)
 
 
 def generate_reading(question):
     first_lines = []
+    line_records = []
     for index in range(3):
         coins = get_3_coin()
         first_lines.append(yin_yang(coins))
-        add_message("assistant", format_coin_result(coins, index))
+        line_records.append(format_coin_result(coins, index))
+        add_message("assistant", f"{number_dict[index]}已定。")
 
     first_gua = gua_dict["".join(first_lines)]
-    add_message("assistant", f"您的首卦为：**{first_gua}**")
 
     second_lines = []
     for index in range(3, 6):
         coins = get_3_coin()
         second_lines.append(yin_yang(coins))
-        add_message("assistant", format_coin_result(coins, index))
+        line_records.append(format_coin_result(coins, index))
+        add_message("assistant", f"{number_dict[index]}已定。")
 
     second_gua = gua_dict["".join(second_lines)]
     gua = second_gua + first_gua
     gua_des = des_dict[gua]
-    add_message("assistant", f"您的次卦为：**{second_gua}**")
+    add_message("assistant", "六爻已成。本次卦象已为你封存，等待揭晓。")
+    return {
+        "question": question,
+        "gua": gua,
+        "gua_des": gua_des,
+        "line_records": line_records,
+        "followups": [],
+    }
+
+
+def reveal_reading(reading):
+    gua_des = reading["gua_des"]
+    add_message("assistant", "### 本次卦象揭晓", delay=0)
+    add_message("assistant", "  \n".join(reading["line_records"]), delay=0)
     add_message(
         "assistant",
-        f"### 本次卦象：{gua_des['name']}\n{gua_des['des']}  \n\n> {gua_des['sentence']}",
+        f"### {gua_des['name']}\n{gua_des['des']}  \n\n> {gua_des['sentence']}",
         delay=0,
     )
-    return {"question": question, "gua": gua, "gua_des": gua_des, "followups": []}
 
 
 def coupon_discount(code):
@@ -196,8 +236,8 @@ def reset_for_new_reading():
 
 def render_payment_page():
     st.divider()
-    st.subheader("解锁本次完整解读")
-    st.caption("包含 AI 初始解读，以及围绕本卦的 5 次追问。新的问题需要重新起一卦。")
+    st.subheader("揭晓本次卦象与完整解读")
+    st.caption("本次卦象已经生成。付款后揭晓卦名、卦辞、AI 初始解读，以及围绕本卦的 5 次追问。")
     payment_method = st.radio("支付方式", ["微信支付", "支付宝支付"], horizontal=True)
     coupon_code = st.text_input("优惠码（可选）", placeholder="例如：TEST100")
     discount, coupon_text = coupon_discount(coupon_code)
@@ -208,12 +248,12 @@ def render_payment_page():
     elif coupon_code:
         st.warning("优惠码无效")
 
-    st.markdown(f"**本次完整解读：¥{BASE_PRICE:.2f}**")
+    st.markdown(f"**本次专属问卦：¥{BASE_PRICE:.2f}**")
     if discount:
         st.markdown(f"优惠：-¥{discount:.2f}  ")
     st.markdown(f"### 应付：¥{final_price:.2f}")
     st.info("这是付款流程测试版：点击下方按钮不会真实扣款。")
-    if st.button(f"模拟完成{payment_method}支付", type="primary", use_container_width=True):
+    if st.button(f"模拟{payment_method}支付并揭晓", type="primary", use_container_width=True):
         st.session_state.stage = "interpreting"
         st.session_state.reading["payment_method"] = payment_method
         st.session_state.reading["paid_price"] = final_price
@@ -223,6 +263,7 @@ def render_payment_page():
 def finish_test_payment():
     reading = st.session_state.reading
     add_message("assistant", f"✅ 已完成{reading['payment_method']}测试支付，本次解读已解锁。")
+    reveal_reading(reading)
     try:
         with st.spinner("正在整理这次卦象的解读……"):
             answer = initial_interpretation(reading)
