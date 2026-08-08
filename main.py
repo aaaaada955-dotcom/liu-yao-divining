@@ -82,6 +82,61 @@ def format_coin_result(coin_result, index):
     return f"{number_dict[index]}：{sides}，为 {yin_yang(coin_result)}"
 
 
+def sealed_hexagram_markup(completed):
+    """Render a six-line casting animation without exposing any yin/yang result."""
+    lines = []
+    # A hexagram is traditionally drawn from the bottom (初爻) upwards.
+    for index in range(5, -1, -1):
+        is_sealed = index < completed
+        is_current = index == completed and completed < 6
+        classes = "sealed-line"
+        if is_sealed:
+            classes += " sealed"
+        elif is_current:
+            classes += " waiting"
+        lines.append(f'<div class="{classes}"></div>')
+
+    if completed == 0:
+        status = "凝神静气，开始起卦"
+    elif completed < 6:
+        status = f"第 {completed} 爻已封存"
+    else:
+        status = "六爻已成，静待揭晓"
+
+    return f"""
+    <style>
+      .casting-card {{
+        max-width: 330px; margin: 8px auto 20px; padding: 26px 34px 22px;
+        border: 1px solid #ead9b7; border-radius: 16px;
+        background: linear-gradient(145deg, #fffdf7, #f7efe0); text-align: center;
+      }}
+      .casting-title {{ color: #7a5a2d; font-size: 14px; letter-spacing: 0.22em; margin-bottom: 20px; }}
+      .sealed-lines {{ display: flex; flex-direction: column; gap: 10px; align-items: center; }}
+      .sealed-line {{ width: 142px; height: 7px; border-radius: 9px; background: #ddd4c5; opacity: .55; }}
+      .sealed-line.sealed {{ background: linear-gradient(90deg, #b98a42, #e4c77e, #a97831); opacity: 1; box-shadow: 0 2px 8px #d8bd7a77; }}
+      .sealed-line.waiting {{ animation: sealPulse .65s ease-in-out infinite alternate; }}
+      .casting-status {{ margin-top: 20px; color: #8b6b3d; font-size: 14px; }}
+      @keyframes sealPulse {{ from {{ opacity: .32; transform: scaleX(.9); }} to {{ opacity: .9; transform: scaleX(1); }} }}
+    </style>
+    <div class="casting-card">
+      <div class="casting-title">六 爻 封 卦</div>
+      <div class="sealed-lines">{''.join(lines)}</div>
+      <div class="casting-status">{status}</div>
+    </div>
+    """
+
+
+def play_casting_animation():
+    with st.chat_message("assistant"):
+        placeholder = st.empty()
+        for completed in range(7):
+            placeholder.markdown(sealed_hexagram_markup(completed), unsafe_allow_html=True)
+            if completed < 6:
+                time.sleep(0.65)
+        time.sleep(0.45)
+        placeholder.empty()
+
+
 def get_secret(name):
     value = os.getenv(name)
     if value:
@@ -182,7 +237,6 @@ def generate_reading(question):
         coins = get_3_coin()
         first_lines.append(yin_yang(coins))
         line_records.append(format_coin_result(coins, index))
-        add_message("assistant", f"{number_dict[index]}已定。")
 
     first_gua = gua_dict["".join(first_lines)]
 
@@ -191,11 +245,11 @@ def generate_reading(question):
         coins = get_3_coin()
         second_lines.append(yin_yang(coins))
         line_records.append(format_coin_result(coins, index))
-        add_message("assistant", f"{number_dict[index]}已定。")
 
     second_gua = gua_dict["".join(second_lines)]
     gua = second_gua + first_gua
     gua_des = des_dict[gua]
+    play_casting_animation()
     add_message("assistant", "六爻已成。本次卦象已为你封存，等待揭晓。")
     return {
         "question": question,
