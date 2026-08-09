@@ -84,66 +84,55 @@ def format_coin_result(coin_result, index):
     return f"{number_dict[index]}：{sides}，为 {yin_yang(coin_result)}"
 
 
-def sealed_hexagram_markup(completed, rolling=False):
-    """Render the casting ceremony without exposing any yin/yang result."""
-    lines = []
-    # A hexagram is traditionally drawn from the bottom (初爻) upwards.
-    for index in range(5, -1, -1):
-        is_sealed = index < completed
-        is_current = index == completed and completed < 6
-        classes = "sealed-line"
-        if is_sealed:
-            classes += " sealed"
-        elif is_current:
-            classes += " waiting"
-        lines.append(f'<div class="{classes}"></div>')
+def coin_markup(value, rolling=False):
+    side = "正" if value else "反"
+    rolling_class = " coin-rolling" if rolling else ""
+    return f'<div class="ancient-coin{rolling_class}"><span class="coin-word">{side}</span><i></i></div>'
 
-    if completed == 0:
-        status = "请静心默念此问"
+
+def casting_markup(coin_results, rolling=False):
+    """Show each cast openly, but keep the final hexagram sealed until payment."""
+    completed = len(coin_results)
+    groups = []
+    for index, result in enumerate(coin_results):
+        coins = "".join(coin_markup(value) for value in result)
+        groups.append(f'<div class="cast-record"><b>{number_dict[index]}</b><div class="coin-row small">{coins}</div><span>落定：{yin_yang(result)}爻</span></div>')
+    if rolling:
+        groups.append(f'<div class="casting-now"><div>第 {completed + 1} 爻 · 六爻之一</div><div class="coin-row">{coin_markup(0, True)}{coin_markup(1, True)}{coin_markup(0, True)}</div><em>三枚古钱正在翻转…</em></div>')
     elif completed < 6:
-        status = f"第 {completed} 爻已封存"
+        groups.append(f'<div class="casting-now quiet"><div>第 {completed + 1} 爻 · 六爻之一</div><p>请静心默念此问</p></div>')
     else:
-        status = "卦已成，待揭晓"
-
-    coins_class = "ritual-coins rolling" if rolling else "ritual-coins"
-
+        groups.append('<div class="sealed-chart"><div class="ink-lines">☷<br>☳</div><div class="vermilion-seal">卦<br>已<br>封</div></div><div class="sealed-status">卦已成，待解读</div>')
     return f"""
     <style>
       .casting-card {{
-        max-width: 360px; margin: 8px auto 20px; padding: 28px 34px 24px;
+        max-width: 460px; margin: 8px auto 20px; padding: 28px 28px 24px;
         border: 1px solid #d7c6a0; border-radius: 18px;
         background: radial-gradient(circle at 50% 0%, #fffdf7, #f2eadb); text-align: center;
         box-shadow: 0 12px 32px #4f35101a;
       }}
       .casting-title {{ color: #5a3723; font-size: 13px; letter-spacing: .32em; margin: 4px 0 18px; }}
-      .ritual-coins {{ display: flex; justify-content: center; gap: 10px; margin: 0 0 18px; }}
-      .ritual-coin {{ width: 28px; height: 28px; border: 2px solid #b78a43; border-radius: 50%; background: #e8d19a; box-shadow: inset 0 0 0 5px #f5e7bf; }}
-      .ritual-coins.rolling .ritual-coin {{ animation: coinTurn .8s ease-in-out; }}
-      .ritual-coins.rolling .ritual-coin:nth-child(2) {{ animation-delay: .08s; }}
-      .ritual-coins.rolling .ritual-coin:nth-child(3) {{ animation-delay: .16s; }}
-      .sealed-lines {{ display: flex; flex-direction: column; gap: 11px; align-items: center; margin: 8px 0; }}
-      .sealed-line {{ width: 154px; height: 8px; border-radius: 9px; background: #d8d0c2; opacity: .48; }}
-      .sealed-line.sealed {{ background: linear-gradient(90deg, #732b22, #b44d39, #732b22); opacity: 1; box-shadow: 0 2px 8px #8c2d1d4d; position: relative; }}
-      .sealed-line.sealed::after {{ content: '定'; position: absolute; color: #f4d99b; font-size: 11px; line-height: 8px; left: 50%; transform: translateX(-50%); }}
-      .sealed-line.waiting {{ animation: sealPulse .65s ease-in-out infinite alternate; }}
-      .casting-status {{ margin-top: 19px; color: #6d4b30; font-size: 14px; letter-spacing: .08em; }}
-      @keyframes sealPulse {{ from {{ opacity: .28; transform: scaleX(.88); }} to {{ opacity: .85; transform: scaleX(1); }} }}
-      @keyframes coinTurn {{ 0% {{ transform: rotateY(0) translateY(0); }} 50% {{ transform: rotateY(180deg) translateY(-8px); }} 100% {{ transform: rotateY(360deg) translateY(0); }} }}
+      .cast-record {{ border-top: 1px solid #ddcfb6; padding: 10px 0; display:grid; grid-template-columns:62px 1fr 82px; align-items:center; color:#684b31; font-size:13px; }}
+      .coin-row {{ display:flex; justify-content:center; gap:16px; margin:16px 0; perspective:500px; }} .coin-row.small {{ justify-content:flex-start; gap:5px; margin:0; }}
+      .ancient-coin {{ width:58px; height:58px; border-radius:50%; position:relative; display:grid; place-items:center; color:#5a3513; font-weight:700; font-family:serif; background:radial-gradient(circle at 33% 25%,#fff1bd 0 7%,#d8a94f 25%,#8b5720 57%,#e1ba63 65%,#6d3d13 75%,#e5c06c 79%,#9a6427 100%); box-shadow:inset 0 0 0 3px #f3d88c,inset 0 0 0 7px #8e571e,0 5px 8px #42240d42; }}
+      .ancient-coin::before {{ content:''; width:17px; height:17px; background:#f4ead7; border:3px solid #87531e; box-shadow:inset 0 0 4px #5a3513; }} .ancient-coin::after {{ content:'乾 隆 通 宝'; position:absolute; font-size:6px; letter-spacing:1px; top:6px; }} .ancient-coin i {{ position:absolute; inset:10px; border:1px dashed #f3d88c; border-radius:50%; }} .coin-word {{ z-index:2; font-size:11px; background:#d8a94f; padding:1px; }}
+      .coin-row.small .ancient-coin {{ width:29px;height:29px; }} .coin-row.small .ancient-coin::before {{ width:8px;height:8px;border-width:2px; }} .coin-row.small .ancient-coin::after,.coin-row.small .ancient-coin i {{ display:none; }} .coin-row.small .coin-word {{ font-size:8px; }}
+      .coin-rolling {{ animation: coinTurn .8s ease-in-out; }} .coin-rolling:nth-child(2) {{ animation-delay:.06s; }} .coin-rolling:nth-child(3) {{ animation-delay:.12s; }}
+      .casting-now {{ padding:14px 0 6px; color:#5b3b24; font-size:15px; }} .casting-now em {{ font-size:12px;color:#9b7656; }} .casting-now.quiet p {{ margin:12px 0;color:#815d3a; }}
+      .sealed-chart {{ height:154px; margin:20px auto 8px; position:relative; display:grid;place-items:center; background:linear-gradient(135deg,#e9dfcd,#c6b79c); border:1px solid #a6906a; overflow:hidden; }} .ink-lines {{ font-size:56px; line-height:.68; color:#423324; opacity:.42; letter-spacing:18px; transform:rotate(-4deg); }} .vermilion-seal {{ position:absolute; width:82px;height:82px;border-radius:50%;display:grid;place-items:center;line-height:1.05; font-weight:700;color:#f3c99f;background:#9d2b20; border:4px double #e6ab80; box-shadow:0 3px 8px #4b1a1670; transform:rotate(-10deg); }} .sealed-status {{ color:#782b22;font-weight:700;letter-spacing:.16em;margin-top:14px; }}
+      @keyframes coinTurn {{ 0% {{ transform:rotateY(0) translateY(0); }} 45% {{ transform:rotateY(180deg) translateY(-13px) scale(1.06); }} 100% {{ transform:rotateY(360deg) translateY(0); }} }}
     </style>
     <div class="casting-card">
-      <div class="casting-title">六 爻 起 卦</div>
-      <div class="{coins_class}"><div class="ritual-coin"></div><div class="ritual-coin"></div><div class="ritual-coin"></div></div>
-      <div class="sealed-lines">{''.join(lines)}</div>
-      <div class="casting-status">{status}</div>
+      <div class="casting-title">六 爻 起 卦</div>{''.join(groups)}
     </div>
     """
 
 
 def play_single_cast_animation(completed):
     placeholder = st.empty()
-    placeholder.markdown(sealed_hexagram_markup(completed, rolling=True), unsafe_allow_html=True)
+    placeholder.markdown(casting_markup(st.session_state.casting['coin_results'], rolling=True), unsafe_allow_html=True)
     time.sleep(0.85)
-    placeholder.markdown(sealed_hexagram_markup(completed + 1), unsafe_allow_html=True)
+    placeholder.empty()
     time.sleep(0.25)
     placeholder.empty()
 
@@ -264,6 +253,7 @@ def create_reading(question, coin_results):
     gua_des = des_dict[gua]
     return {
         "question": question,
+        "coin_results": coin_results,
         "gua": gua,
         "gua_des": gua_des,
         "line_records": line_records,
@@ -274,10 +264,9 @@ def create_reading(question, coin_results):
 def render_casting():
     casting = st.session_state.casting
     completed = len(casting["coin_results"])
-    st.markdown(sealed_hexagram_markup(completed), unsafe_allow_html=True)
+    st.markdown(casting_markup(casting["coin_results"]), unsafe_allow_html=True)
 
     if completed < 6:
-        st.caption(f"第 {completed + 1} 爻 · 共六爻")
         if st.button("落下一爻", type="primary", use_container_width=True):
             play_single_cast_animation(completed)
             casting["coin_results"].append(get_3_coin())
@@ -324,8 +313,8 @@ def reset_for_new_reading():
 
 def render_payment_page():
     st.divider()
-    st.markdown(sealed_hexagram_markup(6), unsafe_allow_html=True)
-    st.subheader("查看完整结果")
+    st.markdown(casting_markup(st.session_state.reading.get("coin_results", [])), unsafe_allow_html=True)
+    st.subheader("卦已成，待解读")
     st.caption("本次卦象已经生成。付款后查看卦名、卦辞、AI 初始解读，以及围绕本卦的 5 次追问。")
     payment_method = st.radio("支付方式", ["微信支付", "支付宝支付"], horizontal=True)
     coupon_code = st.text_input("优惠码（可选）", placeholder="例如：TEST100")
