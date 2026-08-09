@@ -18,6 +18,7 @@ load_dotenv()
 
 # 测试阶段的展示价格。正式上线前改这里即可。
 BASE_PRICE = 20.00
+QWEN_MODEL = "qwen3.7-plus-2026-05-26"
 TEST_COUPONS = {
     "TEST100": {"type": "percent", "value": 100, "label": "测试体验券：立减全部金额"},
     "WELCOME2": {"type": "amount", "value": 2, "label": "新人体验券：立减 ¥2"},
@@ -38,7 +39,7 @@ st.set_page_config(page_title="AI 易经决策助手", page_icon="☯", layout="
 def init_state():
     if "messages" not in st.session_state:
         st.session_state.messages = [
-            {"role": "assistant", "content": "静一静，告诉我此刻最想理清的一件事。"}
+            {"role": "assistant", "content": "你现在最想问什么事？想清楚后告诉我，我们开始起卦。"}
         ]
     if "stage" not in st.session_state:
         st.session_state.stage = "ask"
@@ -162,7 +163,7 @@ def ask_qwen(messages, max_tokens=800):
 
     for _ in range(2):
         response = make_client().chat.completions.create(
-            model="qwen-plus",
+            model=QWEN_MODEL,
             messages=current_messages,
             temperature=0.55,
             max_tokens=max_tokens,
@@ -314,7 +315,7 @@ def coupon_discount(code):
 
 
 def reset_for_new_reading():
-    st.session_state.messages = [{"role": "assistant", "content": "静一静，告诉我此刻最想理清的一件事。"}]
+    st.session_state.messages = [{"role": "assistant", "content": "你现在最想问什么事？想清楚后告诉我，我们开始起卦。"}]
     st.session_state.stage = "ask"
     st.session_state.reading = None
     st.session_state.casting = None
@@ -328,7 +329,7 @@ def render_payment_page():
     st.subheader("卦已成，待解读")
     st.caption("本次卦象已经生成。付款后查看卦名、卦辞、AI 初始解读，以及围绕本卦的 5 次追问。")
     payment_method = st.radio("支付方式", ["微信支付", "支付宝支付"], horizontal=True)
-    coupon_code = st.text_input("优惠码（可选）", placeholder="例如：TEST100")
+    coupon_code = st.text_input("优惠码（可选）")
     discount, coupon_text = coupon_discount(coupon_code)
     final_price = BASE_PRICE - discount
 
@@ -341,7 +342,6 @@ def render_payment_page():
     if discount:
         st.markdown(f"优惠：-¥{discount:.2f}  ")
     st.markdown(f"### 应付：¥{final_price:.2f}")
-    st.info("这是付款流程测试版：点击下方按钮不会真实扣款。")
     if st.button("查看完整结果 · ¥20", type="primary", use_container_width=True):
         st.session_state.stage = "interpreting"
         st.session_state.reading["payment_method"] = payment_method
@@ -388,8 +388,24 @@ def render_followup():
 
 init_state()
 
-st.title("AI 易经决策助手")
-st.caption("用一次有仪式感的问卦，帮助你把心里的事理清一点。仅作思考陪伴，不替你预测未来或做决定。")
+st.title("AI问卦 · 理心")
+st.caption("专属于你的AI周易决策助手")
+st.markdown("通过传统周易起卦，结合你的具体问题，帮你看清事情的未来走势、成败、过程、阻力与转机。")
+st.divider()
+st.markdown("#### 六爻是什么？")
+st.markdown(
+    "六爻，是《周易》古法占卜的一种，以易经六十四卦为基础，通过铜钱摇卦看事情的吉凶与发展。\n\n"
+    "周易六爻预测涵盖广泛，常见的预测方向包括：求财讨债、买卖盈亏、功名事业、婚姻感情、健康疾病、"
+    "出行平安、官司诉讼以及失物寻找等。"
+)
+st.markdown("#### 建议问法")
+st.markdown("一次只问一件事，问得越具体，得到的解读越贴近。")
+st.markdown(
+    "- 我跟XXX下半年感情会怎样？\n"
+    "- 我和XX的感情还能不能挽回？\n"
+    "- 我现在这份工作要不要换？\n"
+    "- 这门生意能不能做？"
+)
 render_history()
 
 if st.session_state.stage == "ask":
