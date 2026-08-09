@@ -167,6 +167,10 @@ def ask_qwen(messages, max_tokens=800):
             messages=current_messages,
             temperature=0.55,
             max_tokens=max_tokens,
+            # Qwen3.7 supports an internal thinking mode. This app needs the final
+            # reader-facing interpretation directly, rather than spending the output
+            # budget on hidden reasoning.
+            extra_body={"enable_thinking": False},
         )
         choice = response.choices[0]
         answer = (choice.message.content or "").strip()
@@ -342,7 +346,8 @@ def render_payment_page():
     if discount:
         st.markdown(f"优惠：-¥{discount:.2f}  ")
     st.markdown(f"### 应付：¥{final_price:.2f}")
-    if st.button("查看完整结果 · ¥20", type="primary", use_container_width=True):
+    button_text = f"查看完整结果 · ¥{final_price:.2f}"
+    if st.button(button_text, type="primary", use_container_width=True):
         st.session_state.stage = "interpreting"
         st.session_state.reading["payment_method"] = payment_method
         st.session_state.reading["paid_price"] = final_price
