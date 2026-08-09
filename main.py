@@ -17,7 +17,7 @@ from openai import (
 load_dotenv()
 
 # 测试阶段的展示价格。正式上线前改这里即可。
-BASE_PRICE = 9.90
+BASE_PRICE = 20.00
 TEST_COUPONS = {
     "TEST100": {"type": "percent", "value": 100, "label": "测试体验券：立减全部金额"},
     "WELCOME2": {"type": "amount", "value": 2, "label": "新人体验券：立减 ¥2"},
@@ -46,6 +46,8 @@ def init_state():
         st.session_state.reading = None
     if "remaining_followups" not in st.session_state:
         st.session_state.remaining_followups = 0
+    if "casting" not in st.session_state:
+        st.session_state.casting = None
 
 
 def render_history():
@@ -82,8 +84,8 @@ def format_coin_result(coin_result, index):
     return f"{number_dict[index]}：{sides}，为 {yin_yang(coin_result)}"
 
 
-def sealed_hexagram_markup(completed):
-    """Render a six-line casting animation without exposing any yin/yang result."""
+def sealed_hexagram_markup(completed, rolling=False):
+    """Render the casting ceremony without exposing any yin/yang result."""
     lines = []
     # A hexagram is traditionally drawn from the bottom (初爻) upwards.
     for index in range(5, -1, -1):
@@ -97,44 +99,53 @@ def sealed_hexagram_markup(completed):
         lines.append(f'<div class="{classes}"></div>')
 
     if completed == 0:
-        status = "凝神静气，开始起卦"
+        status = "请静心默念此问"
     elif completed < 6:
         status = f"第 {completed} 爻已封存"
     else:
-        status = "六爻已成，静待揭晓"
+        status = "卦已成，待揭晓"
+
+    coins_class = "ritual-coins rolling" if rolling else "ritual-coins"
 
     return f"""
     <style>
       .casting-card {{
-        max-width: 330px; margin: 8px auto 20px; padding: 26px 34px 22px;
-        border: 1px solid #ead9b7; border-radius: 16px;
-        background: linear-gradient(145deg, #fffdf7, #f7efe0); text-align: center;
+        max-width: 360px; margin: 8px auto 20px; padding: 28px 34px 24px;
+        border: 1px solid #d7c6a0; border-radius: 18px;
+        background: radial-gradient(circle at 50% 0%, #fffdf7, #f2eadb); text-align: center;
+        box-shadow: 0 12px 32px #4f35101a;
       }}
-      .casting-title {{ color: #7a5a2d; font-size: 14px; letter-spacing: 0.22em; margin-bottom: 20px; }}
-      .sealed-lines {{ display: flex; flex-direction: column; gap: 10px; align-items: center; }}
-      .sealed-line {{ width: 142px; height: 7px; border-radius: 9px; background: #ddd4c5; opacity: .55; }}
-      .sealed-line.sealed {{ background: linear-gradient(90deg, #b98a42, #e4c77e, #a97831); opacity: 1; box-shadow: 0 2px 8px #d8bd7a77; }}
+      .casting-title {{ color: #5a3723; font-size: 13px; letter-spacing: .32em; margin: 4px 0 18px; }}
+      .ritual-coins {{ display: flex; justify-content: center; gap: 10px; margin: 0 0 18px; }}
+      .ritual-coin {{ width: 28px; height: 28px; border: 2px solid #b78a43; border-radius: 50%; background: #e8d19a; box-shadow: inset 0 0 0 5px #f5e7bf; }}
+      .ritual-coins.rolling .ritual-coin {{ animation: coinTurn .8s ease-in-out; }}
+      .ritual-coins.rolling .ritual-coin:nth-child(2) {{ animation-delay: .08s; }}
+      .ritual-coins.rolling .ritual-coin:nth-child(3) {{ animation-delay: .16s; }}
+      .sealed-lines {{ display: flex; flex-direction: column; gap: 11px; align-items: center; margin: 8px 0; }}
+      .sealed-line {{ width: 154px; height: 8px; border-radius: 9px; background: #d8d0c2; opacity: .48; }}
+      .sealed-line.sealed {{ background: linear-gradient(90deg, #732b22, #b44d39, #732b22); opacity: 1; box-shadow: 0 2px 8px #8c2d1d4d; position: relative; }}
+      .sealed-line.sealed::after {{ content: '定'; position: absolute; color: #f4d99b; font-size: 11px; line-height: 8px; left: 50%; transform: translateX(-50%); }}
       .sealed-line.waiting {{ animation: sealPulse .65s ease-in-out infinite alternate; }}
-      .casting-status {{ margin-top: 20px; color: #8b6b3d; font-size: 14px; }}
-      @keyframes sealPulse {{ from {{ opacity: .32; transform: scaleX(.9); }} to {{ opacity: .9; transform: scaleX(1); }} }}
+      .casting-status {{ margin-top: 19px; color: #6d4b30; font-size: 14px; letter-spacing: .08em; }}
+      @keyframes sealPulse {{ from {{ opacity: .28; transform: scaleX(.88); }} to {{ opacity: .85; transform: scaleX(1); }} }}
+      @keyframes coinTurn {{ 0% {{ transform: rotateY(0) translateY(0); }} 50% {{ transform: rotateY(180deg) translateY(-8px); }} 100% {{ transform: rotateY(360deg) translateY(0); }} }}
     </style>
     <div class="casting-card">
-      <div class="casting-title">六 爻 封 卦</div>
+      <div class="casting-title">六 爻 起 卦</div>
+      <div class="{coins_class}"><div class="ritual-coin"></div><div class="ritual-coin"></div><div class="ritual-coin"></div></div>
       <div class="sealed-lines">{''.join(lines)}</div>
       <div class="casting-status">{status}</div>
     </div>
     """
 
 
-def play_casting_animation():
-    with st.chat_message("assistant"):
-        placeholder = st.empty()
-        for completed in range(7):
-            placeholder.markdown(sealed_hexagram_markup(completed), unsafe_allow_html=True)
-            if completed < 6:
-                time.sleep(0.65)
-        time.sleep(0.45)
-        placeholder.empty()
+def play_single_cast_animation(completed):
+    placeholder = st.empty()
+    placeholder.markdown(sealed_hexagram_markup(completed, rolling=True), unsafe_allow_html=True)
+    time.sleep(0.85)
+    placeholder.markdown(sealed_hexagram_markup(completed + 1), unsafe_allow_html=True)
+    time.sleep(0.25)
+    placeholder.empty()
 
 
 def get_secret(name):
@@ -164,7 +175,7 @@ def ask_qwen(messages, max_tokens=800):
         response = make_client().chat.completions.create(
             model="qwen-plus",
             messages=current_messages,
-            temperature=0.7,
+            temperature=0.55,
             max_tokens=max_tokens,
         )
         choice = response.choices[0]
@@ -180,7 +191,7 @@ def ask_qwen(messages, max_tokens=800):
             {"role": "assistant", "content": answer},
             {
                 "role": "user",
-                "content": "请从上一句自然续写，不要重复前文。用一两段完成即可，并在完整句子处收尾。",
+                "content": "请从上一句自然续写，不要重复前文。保持原有结构，在完整句子处收尾。",
             },
         ]
 
@@ -194,8 +205,9 @@ def initial_interpretation(reading):
             "role": "system",
             "content": (
                 "你是一位温和、清醒的易经决策陪伴者。根据用户的问题和卦象，帮助用户整理思路，"
-                "不预测未来，不把任何结果说成必然发生。请用三个短部分回答：看见什么、要留意什么、下一步能做什么。"
-                "每部分不超过三句话，务必在完整句子处结束。"
+                "不预测未来，不把任何结果说成必然发生。请写一份有价值、具体而不空泛的解读，"
+                "总长度约900至1200个中文字。使用四个清晰的小标题：一、你真正卡住的地方；二、这次卦象提醒你什么；"
+                "三、结合你的问题应怎样判断；四、接下来可以做的三件事。每一部分都要说透，但不要重复或说教，务必在完整句子处结束。"
             ),
         },
         {
@@ -203,10 +215,10 @@ def initial_interpretation(reading):
             "content": (
                 f"用户的问题：{reading['question']}\n六爻结果：{reading['gua']}\n"
                 f"卦名：{gua_des['name']}\n{gua_des['des']}\n卦辞：{gua_des['sentence']}\n"
-                "请给出一段有层次、易懂的初始解读。"
+                "请严格按上述四部分完成初始解读。"
             ),
         },
-    ])
+    ], max_tokens=1600)
 
 
 def follow_up_interpretation(reading, follow_up_question):
@@ -217,7 +229,8 @@ def follow_up_interpretation(reading, follow_up_question):
             "role": "system",
             "content": (
                 "你是一位温和、清醒的易经决策陪伴者。只围绕同一卦象回答追问，帮助用户梳理思路，不预测未来。"
-                "回答要直接、完整，最多给三个要点；宁可简短，也不要在一句话或一个要点中间停止。"
+                "回答要直接、完整、有针对性，长度约400至700个中文字。可以使用两到三个小标题或要点，"
+                "解释清楚原因和可执行的一步；宁可删去重复内容，也不要在一句话或一个要点中间停止。"
             ),
         },
         {
@@ -227,14 +240,14 @@ def follow_up_interpretation(reading, follow_up_question):
                 f"卦辞：{gua_des['sentence']}\n此前追问：{history}\n\n本次追问：{follow_up_question}"
             ),
         },
-    ], max_tokens=800)
+    ], max_tokens=1100)
 
 
-def generate_reading(question):
+def create_reading(question, coin_results):
     first_lines = []
     line_records = []
     for index in range(3):
-        coins = get_3_coin()
+        coins = coin_results[index]
         first_lines.append(yin_yang(coins))
         line_records.append(format_coin_result(coins, index))
 
@@ -242,15 +255,13 @@ def generate_reading(question):
 
     second_lines = []
     for index in range(3, 6):
-        coins = get_3_coin()
+        coins = coin_results[index]
         second_lines.append(yin_yang(coins))
         line_records.append(format_coin_result(coins, index))
 
     second_gua = gua_dict["".join(second_lines)]
     gua = second_gua + first_gua
     gua_des = des_dict[gua]
-    play_casting_animation()
-    add_message("assistant", "六爻已成。本次卦象已为你封存，等待揭晓。")
     return {
         "question": question,
         "gua": gua,
@@ -258,6 +269,28 @@ def generate_reading(question):
         "line_records": line_records,
         "followups": [],
     }
+
+
+def render_casting():
+    casting = st.session_state.casting
+    completed = len(casting["coin_results"])
+    st.markdown(sealed_hexagram_markup(completed), unsafe_allow_html=True)
+
+    if completed < 6:
+        st.caption(f"第 {completed + 1} 爻 · 共六爻")
+        if st.button("落下一爻", type="primary", use_container_width=True):
+            play_single_cast_animation(completed)
+            casting["coin_results"].append(get_3_coin())
+            if len(casting["coin_results"]) == 6:
+                st.session_state.reading = create_reading(casting["question"], casting["coin_results"])
+                st.session_state.casting = None
+                st.session_state.stage = "payment"
+            st.rerun()
+    else:
+        st.session_state.reading = create_reading(casting["question"], casting["coin_results"])
+        st.session_state.casting = None
+        st.session_state.stage = "payment"
+        st.rerun()
 
 
 def reveal_reading(reading):
@@ -284,14 +317,16 @@ def reset_for_new_reading():
     st.session_state.messages = [{"role": "assistant", "content": "静一静，告诉我此刻最想理清的一件事。"}]
     st.session_state.stage = "ask"
     st.session_state.reading = None
+    st.session_state.casting = None
     st.session_state.remaining_followups = 0
     st.rerun()
 
 
 def render_payment_page():
     st.divider()
-    st.subheader("揭晓本次卦象与完整解读")
-    st.caption("本次卦象已经生成。付款后揭晓卦名、卦辞、AI 初始解读，以及围绕本卦的 5 次追问。")
+    st.markdown(sealed_hexagram_markup(6), unsafe_allow_html=True)
+    st.subheader("查看完整结果")
+    st.caption("本次卦象已经生成。付款后查看卦名、卦辞、AI 初始解读，以及围绕本卦的 5 次追问。")
     payment_method = st.radio("支付方式", ["微信支付", "支付宝支付"], horizontal=True)
     coupon_code = st.text_input("优惠码（可选）", placeholder="例如：TEST100")
     discount, coupon_text = coupon_discount(coupon_code)
@@ -302,12 +337,12 @@ def render_payment_page():
     elif coupon_code:
         st.warning("优惠码无效")
 
-    st.markdown(f"**本次专属问卦：¥{BASE_PRICE:.2f}**")
+    st.markdown(f"**本次专属问卦：¥{BASE_PRICE:.0f}**")
     if discount:
         st.markdown(f"优惠：-¥{discount:.2f}  ")
     st.markdown(f"### 应付：¥{final_price:.2f}")
     st.info("这是付款流程测试版：点击下方按钮不会真实扣款。")
-    if st.button(f"模拟{payment_method}支付并揭晓", type="primary", use_container_width=True):
+    if st.button("查看完整结果 · ¥20", type="primary", use_container_width=True):
         st.session_state.stage = "interpreting"
         st.session_state.reading["payment_method"] = payment_method
         st.session_state.reading["paid_price"] = final_price
@@ -361,9 +396,11 @@ if st.session_state.stage == "ask":
     question = st.chat_input("输入你此刻最想问的一件事")
     if question:
         add_message("user", question, delay=0)
-        st.session_state.reading = generate_reading(question)
-        st.session_state.stage = "payment"
+        st.session_state.casting = {"question": question, "coin_results": []}
+        st.session_state.stage = "casting"
         st.rerun()
+elif st.session_state.stage == "casting":
+    render_casting()
 elif st.session_state.stage == "payment":
     render_payment_page()
 elif st.session_state.stage == "interpreting":
